@@ -1,9 +1,8 @@
 #include <iostream>
 #include <vector>
 #include <regex>
-#include <cmath>
 
-static const int MAX_SQUARE = 1000000;
+static const int MAX_SQUARE = 10000;
 static const int MIN_SQUARE = 0;
 static const int MAX_NUM_OF_BEDROOMS = 20;
 static const int MIN_NUM_OF_BEDROOMS = 1;
@@ -26,6 +25,13 @@ static const double COMMERCIAL_METRO_MULTIPLIER = 0.25;
 static const double COMMERCIAL_SAN_EDGES_MULTIPLIER = 0.15;
 static const double COMMERCIAL_BEDROOMS_MULTIPLIER = 0.1;
 
+static const int MINUTES_IN_HOUR = 60;
+static const double COMMERCIAL_MULTIPLIER =
+        COMMERCIAL_METRO_MULTIPLIER + COMMERCIAL_BEDROOMS_MULTIPLIER + COMMERCIAL_SAN_EDGES_MULTIPLIER +
+        COMMERCIAL_SQUARE_MULTIPLIER;
+static const double RESIDENTIAL_MULTIPLIER =
+        RESIDENTIAL_SQUARE_MULTIPLIER + RESIDENTIAL_BEDROOMS_MULTIPLIER + RESIDENTIAL_SAN_EDGES_MULTIPLIER +
+        RESIDENTIAL_METRO_MULTIPLIER;
 using namespace std;
 
 struct Target_Estate {
@@ -43,15 +49,6 @@ struct Real_Estate {
     int time_to_metro;
     bool is_commercial;
     double cost;
-
-    void print() const {
-        cout << "square : " << square << endl;
-        cout << "bedrooms : " << num_of_bedrooms << endl;
-        cout << "san_edges : " << num_of_san_edges << endl;
-        cout << "time : " << time_to_metro << endl;
-        cout << "is_commercial : " << is_commercial << endl;
-        cout << "cost : " << cost << endl;
-    }
 };
 
 struct {
@@ -63,14 +60,7 @@ struct {
     double total_cost;
 } commercial_statistic, residential_statistic;
 
-void clear_console() {
-#if (__APPLE__ || __Linux__)
-    system("clear");
-#elif _WIN32
-    system("cls");
-#endif
-}
-
+void read_additional_estates(const Target_Estate &target_estate);
 
 // The next function of code checks to see if cin failed, then it clears the stream
 void clear_input_stream() {
@@ -79,7 +69,15 @@ void clear_input_stream() {
 //    cin.ignore(1000, '\n');
 }
 
-bool check_num_validity(const string &s) {
+
+bool check_int_num_validity(const string &s) {
+    string reg = R"([+-]?\d+)";
+    regex rx(reg);
+
+    return regex_match(s.c_str(), rx) && !s.empty();
+}
+
+bool check_double_num_validity(const string &s) {
     string reg = R"([+-]?\d+(\.\d+)?)";
     regex rx(reg);
 
@@ -93,13 +91,13 @@ string read_line() {
 }
 
 int string_to_int(const string &str) {
-    if (check_num_validity(str)) return stoi(str);
+    if (check_int_num_validity(str)) return stoi(str);
     clear_input_stream();
     return -1;
 }
 
 double string_to_double(const string &str) {
-    if (check_num_validity(str)) return stod(str);
+    if (check_double_num_validity(str)) return stod(str);
     clear_input_stream();
     return -1;
 }
@@ -139,7 +137,7 @@ double read_double() {
 }
 
 double read_cost() {
-    cout << "\nEnter cost( 1 <= n )" << endl << "> ";
+    cout << "\nEnter cost( 1 <= n < 10_000)" << endl << "> ";
     double cost;
     while (true) {
         cost = read_double();
@@ -225,6 +223,7 @@ void update_statistic(Real_Estate real_estate) {
 }
 
 void read_estates() {
+    cout << "Reading" << endl;
     Real_Estate real_estate{};
     while (true) {
         double square = read_square();
@@ -235,90 +234,103 @@ void read_estates() {
         real_estate.time_to_metro = read_time_to_metro();
         real_estate.is_commercial = read_is_commercial();
         real_estate.cost = read_cost();
-//        clear_console();
         update_statistic(real_estate);
         real_estates.push_back(real_estate);
     }
 }
 
+double predicate_commercial_estate(Target_Estate target_estate) {
+    double average_cost_of_square,
+            average_price_of_bedrooms,
+            average_price_of_san_edges;
+    double total_cost;
+    double price_for_square,
+            price_for_bedrooms,
+            price_for_san_edges,
+            price_for_time_to_metro;
+    int total_time_to_metro;
+
+    total_cost = commercial_statistic.total_cost;
+    average_cost_of_square = total_cost / commercial_statistic.total_square;
+    average_price_of_bedrooms = total_cost / commercial_statistic.total_num_of_bedrooms;
+    average_price_of_san_edges = total_cost / commercial_statistic.total_num_of_san_edges;
+    total_time_to_metro = commercial_statistic.total_time_to_metro;
+
+    price_for_square = COMMERCIAL_SQUARE_MULTIPLIER * average_cost_of_square * target_estate.square;
+    price_for_bedrooms = COMMERCIAL_BEDROOMS_MULTIPLIER * average_price_of_bedrooms * target_estate.num_of_bedrooms;
+    price_for_san_edges = COMMERCIAL_SAN_EDGES_MULTIPLIER * average_price_of_san_edges * target_estate.num_of_san_edges;
+    price_for_time_to_metro =
+            COMMERCIAL_METRO_MULTIPLIER * 2 * (price_for_bedrooms + price_for_square + price_for_san_edges);
+
+    if (target_estate.time_to_metro > total_time_to_metro || target_estate.time_to_metro > MINUTES_IN_HOUR) {
+        price_for_time_to_metro = 0;
+    } else if (target_estate.time_to_metro != total_time_to_metro) {
+        price_for_time_to_metro *= 1 - target_estate.time_to_metro / (double) total_time_to_metro;
+    }
+
+    double cost = price_for_square + price_for_bedrooms + price_for_san_edges + price_for_time_to_metro;
+    cost /= COMMERCIAL_MULTIPLIER;
+
+    return cost;
+}
+
+double predicate_residential_estate(Target_Estate target_estate) {
+    double average_cost_of_square,
+            average_price_of_bedrooms,
+            average_price_of_san_edges;
+    double total_cost;
+    double price_for_square,
+            price_for_bedrooms,
+            price_for_san_edges,
+            price_for_time_to_metro;
+    int total_time_to_metro;
+
+    total_cost = residential_statistic.total_cost;
+    average_cost_of_square = total_cost / residential_statistic.total_square;
+    average_price_of_bedrooms = total_cost / residential_statistic.total_num_of_bedrooms;
+    average_price_of_san_edges = total_cost / residential_statistic.total_num_of_san_edges;
+    total_time_to_metro = residential_statistic.total_time_to_metro;
+
+    price_for_square = RESIDENTIAL_SQUARE_MULTIPLIER * average_cost_of_square * target_estate.square;
+    price_for_bedrooms = RESIDENTIAL_BEDROOMS_MULTIPLIER * average_price_of_bedrooms * target_estate.num_of_bedrooms;
+    price_for_san_edges =
+            RESIDENTIAL_SAN_EDGES_MULTIPLIER * average_price_of_san_edges * target_estate.num_of_san_edges;
+    price_for_time_to_metro =
+            RESIDENTIAL_METRO_MULTIPLIER * 2 * (price_for_bedrooms + price_for_square + price_for_san_edges);
+
+    if (target_estate.time_to_metro > total_time_to_metro || target_estate.time_to_metro > MINUTES_IN_HOUR) {
+        price_for_time_to_metro = 0;
+    } else if (target_estate.time_to_metro != total_time_to_metro) {
+        price_for_time_to_metro *= 1 - target_estate.time_to_metro / (double) total_time_to_metro;
+    }
+
+    double cost = price_for_square + price_for_bedrooms + price_for_san_edges + price_for_time_to_metro;
+    cost /= RESIDENTIAL_MULTIPLIER;
+
+    return cost;
+}
 
 double predicate_input(Target_Estate target_estate) {
+    read_additional_estates(target_estate);
+    if (target_estate.is_commercial) {
+        return predicate_commercial_estate(target_estate);
+    } else {
+        return predicate_residential_estate(target_estate);
+    }
+
+}
+
+void read_additional_estates(const Target_Estate &target_estate) {
     while ((target_estate.is_commercial && commercial_statistic.amount_of_estate == 0) ||
            (!target_estate.is_commercial && residential_statistic.amount_of_estate == 0)) {
         cout << "More information is needed for forecasting" << endl;
         read_estates();
     }
-
-    double average_cost_of_square,
-            average_price_of_bedrooms,
-            average_price_of_san_edges;
-    int total_time_to_metro;
-    double total_cost;
-    int total_amount;
-
-    double price_for_square;
-    double price_for_bedrooms;
-    double price_for_sanatorium_edges;
-    double price_for_time_to_metro;
-    double general_multiplier;
-    if (target_estate.is_commercial) {
-        total_cost = commercial_statistic.total_cost;
-        average_cost_of_square = total_cost / commercial_statistic.total_square;
-        average_price_of_bedrooms = total_cost / commercial_statistic.total_num_of_bedrooms;
-        average_price_of_san_edges = total_cost / commercial_statistic.total_num_of_san_edges;
-        total_time_to_metro = commercial_statistic.total_time_to_metro;
-        total_amount = commercial_statistic.amount_of_estate;
-        price_for_square = COMMERCIAL_SQUARE_MULTIPLIER * average_cost_of_square * target_estate.square;
-        price_for_bedrooms = COMMERCIAL_BEDROOMS_MULTIPLIER * average_price_of_bedrooms * target_estate.num_of_bedrooms;
-        price_for_sanatorium_edges =
-                COMMERCIAL_SAN_EDGES_MULTIPLIER * average_price_of_san_edges * target_estate.num_of_san_edges;
-        general_multiplier =
-                RESIDENTIAL_SQUARE_MULTIPLIER + RESIDENTIAL_BEDROOMS_MULTIPLIER + RESIDENTIAL_SAN_EDGES_MULTIPLIER +
-                RESIDENTIAL_METRO_MULTIPLIER;
-        price_for_time_to_metro = 2 *
-                                  COMMERCIAL_METRO_MULTIPLIER *
-                                  (price_for_bedrooms + price_for_square + price_for_sanatorium_edges) /
-                                  (general_multiplier - RESIDENTIAL_METRO_MULTIPLIER);
-    } else {
-        total_cost = residential_statistic.total_cost;
-        average_cost_of_square = total_cost / residential_statistic.total_square;
-        average_price_of_bedrooms = total_cost / residential_statistic.total_num_of_bedrooms;
-        average_price_of_san_edges = total_cost / residential_statistic.total_num_of_san_edges;
-        total_time_to_metro = residential_statistic.total_time_to_metro;
-        total_amount = residential_statistic.amount_of_estate;
-
-        price_for_square = RESIDENTIAL_SQUARE_MULTIPLIER * average_cost_of_square * target_estate.square;
-        price_for_bedrooms =
-                RESIDENTIAL_BEDROOMS_MULTIPLIER * average_price_of_bedrooms * target_estate.num_of_bedrooms;
-        price_for_sanatorium_edges =
-                RESIDENTIAL_SAN_EDGES_MULTIPLIER * average_price_of_san_edges * target_estate.num_of_san_edges;
-        general_multiplier =
-                RESIDENTIAL_SQUARE_MULTIPLIER + RESIDENTIAL_BEDROOMS_MULTIPLIER + RESIDENTIAL_SAN_EDGES_MULTIPLIER +
-                RESIDENTIAL_METRO_MULTIPLIER;
-        price_for_time_to_metro = 2 *
-                                  RESIDENTIAL_METRO_MULTIPLIER *
-                                  (price_for_bedrooms + price_for_square + price_for_sanatorium_edges) /
-                                  (general_multiplier - RESIDENTIAL_METRO_MULTIPLIER);
-    }
-
-
-    if (target_estate.time_to_metro >= total_time_to_metro || target_estate.time_to_metro > 60) {
-        price_for_time_to_metro = 0;
-    } else if (target_estate.time_to_metro != total_time_to_metro) {
-        price_for_time_to_metro *= 1 - target_estate.time_to_metro / (double ) total_time_to_metro;
-    }
-
-    double cost = price_for_square + price_for_bedrooms + price_for_sanatorium_edges + price_for_time_to_metro;
-    cost /= general_multiplier;
-    cout << "price_for_square : " << price_for_square << endl;
-    cout << "price_for_bedrooms : " << price_for_bedrooms << endl;
-    cout << "price_for_sanatorium_edges : " << price_for_sanatorium_edges << endl;
-    cout << "price_for_time_to_metro_station : " << price_for_time_to_metro << endl;
-
-    return cost;
 }
 
 void read_and_predicate_target_estates() {
+    cout << "Predicating" << endl;
+    cout << "Enter \"0\" in the square to end the program" << endl;
     while (true) {
         Target_Estate estate{};
         double square = read_square();
@@ -332,15 +344,10 @@ void read_and_predicate_target_estates() {
 
         cout << "Predicted cost : " << predicate_input(estate);
     }
-
-}
-
-void menu() {
-    read_estates();
-    read_and_predicate_target_estates();
 }
 
 int main() {
-    menu();
+    read_estates();
+    read_and_predicate_target_estates();
     return 0;
 }
